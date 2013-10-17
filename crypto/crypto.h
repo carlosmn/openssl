@@ -126,6 +126,10 @@
 #  include <stdio.h>
 # endif
 
+# if defined(HAVE_PTHREAD) && !defined(OPENSSL_SYS_WIN32)
+#  include <pthread.h>
+# endif
+
 # include <openssl/stack.h>
 # include <openssl/safestack.h>
 # include <openssl/opensslv.h>
@@ -417,6 +421,20 @@ void *CRYPTO_get_ex_data(const CRYPTO_EX_DATA *ad, int idx);
  * potential race-conditions.
  */
 void CRYPTO_cleanup_all_ex_data(void);
+
+typedef int (*CRYPTO_ONCE_callback)(void *, void *);
+
+# if defined(OPENSSL_SYS_WIN32) && defined(INIT_ONCE_STATIC_INIT)
+typedef INIT_ONCE CRYPTO_ONCE;
+#  define CRYPTO_ONCE_INIT INIT_ONCE_STATIC_INIT
+# elif defined(HAVE_PTHREAD)
+typedef pthread_once_t CRYPTO_ONCE;
+#  define CRYPTO_ONCE_INIT PTHREAD_ONCE_INIT
+# else
+typedef struct CRYPTO_ONCE CRYPTO_ONCE;
+# endif
+
+int CRYPTO_ONCE_once(CRYPTO_ONCE *once, CRYPTO_ONCE_callback init_cb, void *data, void *out);
 
 int CRYPTO_get_new_lockid(char *name);
 
