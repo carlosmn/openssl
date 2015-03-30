@@ -307,12 +307,22 @@ unsigned long irix_thread_id(void)
 /* Linux and a few others */
 #ifdef PTHREADS
 
+static int lock_inited;
+static pthread_mutex_t thread_init_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t *lock_cs;
 static long *lock_count;
 
 void CRYPTO_thread_setup(void)
 {
     int i;
+
+    pthread_mutex_lock(&thread_init_lock);
+
+    lock_inited++;
+
+    /* We only incrase the refcount if we've already initialized the system */
+    if (lock_inited > 1)
+	goto out_unlock;
 
     lock_cs = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
     lock_count = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(long));
@@ -322,20 +332,30 @@ void CRYPTO_thread_setup(void)
             OPENSSL_free(lock_cs);
         if(lock_count)
             OPENSSL_free(lock_count);
-        return;
+	goto out_unlock;
     }
     for (i = 0; i < CRYPTO_num_locks(); i++) {
         lock_count[i] = 0;
         pthread_mutex_init(&(lock_cs[i]), NULL);
     }
 
-    CRYPTO_set_id_callback((unsigned long (*)())pthreads_thread_id);
+    /* We heave thread-id to the errno address, which is the default and works for us */
     CRYPTO_set_locking_callback((void (*)())pthreads_locking_callback);
+
+out_unlock:
+    pthread_mutex_unlock(&thread_init_lock);
+
 }
 
-void thread_cleanup(void)
+void CRYPTO_thread_cleanup(void)
 {
     int i;
+
+    pthread_mutex_lock(&thread_init_lock);
+    lock_inited--;
+
+    if (lock_inited)
+	goto out_unlock;
 
     CRYPTO_set_locking_callback(NULL);
     for (i = 0; i < CRYPTO_num_locks(); i++) {
@@ -343,6 +363,12 @@ void thread_cleanup(void)
     }
     OPENSSL_free(lock_cs);
     OPENSSL_free(lock_count);
+
+    lock_cs = NULL;
+    lock_count = NULL;
+
+out_unlock:
+    pthread_mutex_unlock(&thread_init_lock);
 }
 
 void pthreads_locking_callback(int mode, int type, char *file, int line)
@@ -353,14 +379,6 @@ void pthreads_locking_callback(int mode, int type, char *file, int line)
     } else {
         pthread_mutex_unlock(&(lock_cs[type]));
     }
-}
-
-unsigned long pthreads_thread_id(void)
-{
-    unsigned long ret;
-
-    ret = (unsigned long)pthread_self();
-    return (ret);
 }
 
 #endif                          /* PTHREADS */

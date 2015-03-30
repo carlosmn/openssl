@@ -418,6 +418,16 @@ void *CRYPTO_get_ex_data(const CRYPTO_EX_DATA *ad, int idx);
  */
 void CRYPTO_cleanup_all_ex_data(void);
 
+/*
+ * If there is built-in threading support, this function will
+ * initialize it.
+ */
+void CRYPTO_thread_setup(void);
+/*
+ * Cleanup the data from the built-in threads.
+ */
+void CRYPTO_thread_cleanup(void);
+
 int CRYPTO_get_new_lockid(char *name);
 
 int CRYPTO_num_locks(void);     /* return CRYPTO_NUM_LOCKS (shared libs!) */
