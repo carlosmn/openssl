@@ -572,11 +572,18 @@ void CRYPTO_set_dynlock_destroy_callback(void (*func)
 
 void (*CRYPTO_get_locking_callback(void)) (int mode, int type,
                                            const char *file, int line) {
+    (void)CRYPTO_ONCE_once(&locking_callback_once,
+			   set_locking_callback_once_callback,
+			   default_locking_callback_default, NULL);
     return (locking_callback);
 }
 
 int (*CRYPTO_get_add_lock_callback(void)) (int *num, int mount, int type,
                                            const char *file, int line) {
+    (void)CRYPTO_ONCE_once(&add_lock_callback_once,
+			   set_add_lock_callback_once_callback,
+			   default_add_lock, NULL);
+    OPENSSL_assert(add_lock_callback);
     return (add_lock_callback);
 }
 
@@ -586,13 +593,18 @@ void CRYPTO_set_locking_callback(void (*func) (int mode, int type,
 #ifdef OPENSSL_FIPS
     FIPS_set_locking_callbacks(CRYPTO_lock, CRYPTO_add_lock);
 #endif
-    locking_callback = func;
+    (void)CRYPTO_ONCE_once(&locking_callback_once,
+			   set_locking_callback_once_callback,
+			   func, NULL);
+    OPENSSL_assert(locking_callback);
 }
 
 void CRYPTO_set_add_lock_callback(int (*func) (int *num, int mount, int type,
                                                const char *file, int line))
 {
-    add_lock_callback = func;
+    (void)CRYPTO_ONCE_once(&add_lock_callback_once,
+			   set_add_lock_callback_once_callback,
+			   func, NULL);
 }
 
 void CRYPTO_lock(int mode, int type, const char *file, int line)
@@ -633,8 +645,13 @@ void CRYPTO_lock(int mode, int type, const char *file, int line)
 
             CRYPTO_destroy_dynlockid(type);
         }
-    } else if (locking_callback != NULL)
-        locking_callback(mode, type, file, line);
+    } else {
+	(void)CRYPTO_ONCE_once(&locking_callback_once,
+			       set_locking_callback_once_callback,
+			       default_locking_callback_default,
+			       NULL);
+	locking_callback(mode, type, file, line);
+    }
 }
 
 int CRYPTO_add_lock(int *pointer, int amount, int type, const char *file,
@@ -642,38 +659,26 @@ int CRYPTO_add_lock(int *pointer, int amount, int type, const char *file,
 {
     int ret = 0;
 
-    if (add_lock_callback != NULL) {
+    (void)CRYPTO_ONCE_once(&add_lock_callback_once,
+			   set_add_lock_callback_once_callback,
+			   default_add_lock, NULL);
+    OPENSSL_assert(add_lock_callback);
+
 #ifdef LOCK_DEBUG
-        int before = *pointer;
+    int before = *pointer;
 #endif
 
-        ret = add_lock_callback(pointer, amount, type, file, line);
+    ret = add_lock_callback(pointer, amount, type, file, line);
 #ifdef LOCK_DEBUG
-        {
-            CRYPTO_THREADID id;
-            CRYPTO_THREADID_current(&id);
-            fprintf(stderr, "ladd:%08lx:%2d+%2d->%2d %-18s %s:%d\n",
-                    CRYPTO_THREADID_hash(&id), before, amount, ret,
-                    CRYPTO_get_lock_name(type), file, line);
-        }
-#endif
-    } else {
-        CRYPTO_lock(CRYPTO_LOCK | CRYPTO_WRITE, type, file, line);
-
-        ret = *pointer + amount;
-#ifdef LOCK_DEBUG
-        {
-            CRYPTO_THREADID id;
-            CRYPTO_THREADID_current(&id);
-            fprintf(stderr, "ladd:%08lx:%2d+%2d->%2d %-18s %s:%d\n",
-                    CRYPTO_THREADID_hash(&id),
-                    *pointer, amount, ret,
-                    CRYPTO_get_lock_name(type), file, line);
-        }
-#endif
-        *pointer = ret;
-        CRYPTO_lock(CRYPTO_UNLOCK | CRYPTO_WRITE, type, file, line);
+    {
+	CRYPTO_THREADID id;
+	CRYPTO_THREADID_current(&id);
+	fprintf(stderr, "ladd:%08lx:%2d+%2d->%2d %-18s %s:%d\n",
+		CRYPTO_THREADID_hash(&id), before, amount, ret,
+		CRYPTO_get_lock_name(type), file, line);
     }
+#endif
+
     return (ret);
 }
 
