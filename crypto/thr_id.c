@@ -167,7 +167,7 @@ struct once_arg {
     int result;
 };
 
-static void once_arg_key_once_init(void *data)
+static void once_arg_key_once_init(void)
 {
     (void) pthread_key_create(&once_arg_key, NULL);
 }
@@ -186,11 +186,12 @@ int CRYPTO_ONCE_once(CRYPTO_ONCE *once, CRYPTO_ONCE_callback init_cb, void *data
     once_arg.data = data;
     once_arg.out = out;
     once_arg.result = 0;
+
     if (pthread_once(&once_arg_key_once, once_arg_key_once_init) != 0)
 	return 0;
     if (pthread_setspecific(once_arg_key, &once_arg) != 0)
 	return 0;
-    if (pthread_once(once, init_cb) == 0)
+    if (pthread_once(once, CRYPTO_ONCE_init_function) == 0)
 	return once_arg.result;
     return 0;
 }
