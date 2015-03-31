@@ -104,6 +104,24 @@ void OPENSSL_showfatal(const char *fmta, ...);
 void *OPENSSL_stderr(void);
 extern int OPENSSL_NONPIC_relocated;
 
+/* Choose the right init-once implementation for the platform */
+# if defined(OPENSSL_SYS_WIN32) && defined(INIT_ONCE_STATIC_INIT)
+typedef INIT_ONCE CRYPTO_ONCE;
+#  define CRYPTO_ONCE_INIT INIT_ONCE_STATIC_INIT
+# elif defined(HAVE_PTHREAD)
+typedef pthread_once_t CRYPTO_ONCE;
+#  define CRYPTO_ONCE_INIT PTHREAD_ONCE_INIT
+# else
+/* Dummy implementation since we need to know a size */
+#  define CRYPTO_ONCE_INIT {0}
+typedef struct {
+    int dummy;
+} CRYPTO_ONCE;
+# endif
+
+typedef int (*CRYPTO_ONCE_callback)(void *, void *);
+int CRYPTO_ONCE_once(CRYPTO_ONCE *once, CRYPTO_ONCE_callback init_cb, void *data, void *out);
+
 #ifdef  __cplusplus
 }
 #endif
